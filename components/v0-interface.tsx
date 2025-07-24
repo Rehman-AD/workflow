@@ -9,15 +9,21 @@ import { Send, Paperclip, Loader2, Sparkles, MessageSquare, User, Bot } from "lu
 import { GenerationPanel } from "@/components/generation-panel"
 import { useSession } from "@/components/session-provider"
 import { gradients } from "@/lib/constants/colors"
+// @ts-ignore
+import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition"
+import { Search, Mic } from "lucide-react"
 
 export function V0Interface() {
   const { messages, input, handleInputChange, handleSubmit, isLoading, append } = useChat({
     api: "/api/chat",
   })
   const { startWorkflowTimer } = useSession()
-
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null)
   const [hasSentInitial, setHasSentInitial] = useState(false)
+  const [file, setFile] = useState<File | null>(null)
+  const [filePreview, setFilePreview] = useState<string | null>(null)
+  const [searchMode, setSearchMode] = useState(false)
+  const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition()
 
   useEffect(() => {
     if (!hasSentInitial && messages.length === 0) {
@@ -26,10 +32,50 @@ export function V0Interface() {
     }
   }, [hasSentInitial, messages.length, append])
 
-  const onSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (transcript && listening === false) {
+      handleInputChange({ target: { value: transcript } } as React.ChangeEvent<HTMLInputElement>)
+    }
+  }, [transcript, listening])
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (f) {
+      setFile(f)
+      if (f.type.startsWith("image/")) {
+        setFilePreview(URL.createObjectURL(f))
+      } else {
+        setFilePreview(null)
+      }
+    }
+  }
+
+  const onSend = async (e: React.FormEvent) => {
     e.preventDefault()
     startWorkflowTimer()
-    handleSubmit(e)
+    if (file) {
+      const attachment = Object.assign(file, { url: filePreview || URL.createObjectURL(file) })
+      await append({ role: "user", content: input || "[File attached]" }, { experimental_attachments: [attachment] })
+      setFile(null)
+      setFilePreview(null)
+    } else {
+      handleSubmit(e)
+    }
+  }
+
+  const onSearch = () => {
+    setSearchMode((prev) => !prev)
+    // Placeholder: implement search logic or modal here
+  }
+
+  const onMicClick = () => {
+    if (!browserSupportsSpeechRecognition) return
+    if (listening) {
+      SpeechRecognition.stopListening()
+    } else {
+      resetTranscript()
+      SpeechRecognition.startListening({ continuous: false })
+    }
   }
 
   return (
@@ -125,37 +171,55 @@ export function V0Interface() {
 
         {/* Input Section */}
         <div className="p-4 sm:p-6 border-t border-gray-800/40 bg-gray-900/20 backdrop-blur-sm">
-          {/* SuggestionBox removed as per request */}
-
-          <form onSubmit={onSubmit} className="mt-4">
-            <div className="relative">
+          <form onSubmit={onSend} className="mt-4">
+            <div className="relative flex items-center gap-2">
               <Input
                 value={input}
                 onChange={handleInputChange}
                 placeholder="Describe your workflow idea..."
-                className="bg-gray-800/40 backdrop-blur-sm border-gray-700/40 text-white placeholder-gray-400 pr-14 sm:pr-16 py-3 sm:py-4 rounded-xl focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all duration-300 text-sm sm:text-base"
+                className="bg-gray-800/40 backdrop-blur-sm border-gray-700/40 text-white placeholder-gray-400 pr-32 sm:pr-36 py-3 sm:py-4 rounded-xl focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all duration-300 text-sm sm:text-base"
                 disabled={isLoading}
               />
-              <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex space-x-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-all duration-200"
-                >
-                  <Paperclip className="w-3 sm:w-4 h-3 sm:h-4" />
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={!input.trim() || isLoading}
-                  className="p-2 text-white rounded-lg transition-all duration-200 disabled:opacity-50 shadow-lg"
-                  style={{ background: gradients.brand.primary }}
-                >
-                  <Send className="w-3 sm:w-4 h-3 sm:h-4" />
-                </Button>
-              </div>
+              <input
+                type="file"
+                accept="image/*,application/pdf,.doc,.docx,.txt,.csv,.xlsx,.zip,.rar,.json,.xml,.ppt,.pptx,.mp3,.mp4,.wav,.ogg,.webm"
+                className="hidden"
+                id="file-upload"
+                onChange={onFileChange}
+                disabled={isLoading}
+              />
+              <label htmlFor="file-upload" className="cursor-pointer p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-all duration-200">
+                <Paperclip className="w-4 h-4" />
+              </label>
+              <button type="button" onClick={onSearch} className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-all duration-200">
+                <Search className="w-4 h-4" />
+              </button>
+              <button type="button" onClick={onMicClick} className={`p-2 rounded-lg transition-all duration-200 ${listening ? "bg-blue-700 text-white" : "text-gray-400 hover:text-white hover:bg-gray-700/50"}`} disabled={!browserSupportsSpeechRecognition}>
+                <Mic className="w-4 h-4" />
+              </button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={(!input.trim() && !file) || isLoading}
+                className="p-2 text-white rounded-lg transition-all duration-200 disabled:opacity-50 shadow-lg"
+                style={{ background: gradients.brand.primary }}
+              >
+                <Send className="w-4 h-4" />
+              </Button>
             </div>
+            {file && (
+              <div className="mt-2 flex items-center gap-2">
+                {filePreview ? (
+                  <img src={filePreview} alt="preview" className="w-16 h-16 object-cover rounded-lg border border-gray-700" />
+                ) : (
+                  <span className="text-gray-300">{file.name}</span>
+                )}
+                <button type="button" onClick={() => { setFile(null); setFilePreview(null); }} className="ml-2 text-red-400 hover:text-red-600">Remove</button>
+              </div>
+            )}
+            {searchMode && (
+              <div className="mt-2 p-2 bg-gray-800/80 rounded-lg text-gray-200">Search functionality coming soon...</div>
+            )}
           </form>
         </div>
       </div>

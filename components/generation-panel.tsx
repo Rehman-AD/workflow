@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, MessageSquare, Mail, Zap, Play, Settings, CheckCircle, Clock, Sparkles } from "lucide-react"
 import { WorkflowVisualization } from "@/components/workflow-visualization"
+import ReactFlow, { Background, Controls, MiniMap } from 'reactflow'
+import 'reactflow/dist/style.css'
 
 interface GenerationPanelProps {
   messages: any[]
@@ -18,6 +20,35 @@ export function GenerationPanel({ messages, isLoading, selectedWorkflow, onWorkf
   const [generationStep, setGenerationStep] = useState<string>("")
   const [workflows, setWorkflows] = useState<any[]>([])
   const [progress, setProgress] = useState(0)
+  const [addedIntegrations, setAddedIntegrations] = useState<any[]>([])
+
+  // Add integration to workflow
+  const handleAddIntegration = (workflow: any) => {
+    if (!addedIntegrations.find((w) => w.id === workflow.id)) {
+      setAddedIntegrations((prev) => [...prev, workflow])
+    }
+  }
+
+  // Build React Flow elements from added integrations
+  const getReactFlowElements = () => {
+    if (addedIntegrations.length === 0) return { nodes: [], edges: [] }
+    const nodes = addedIntegrations.map((w, i) => ({
+      id: w.id,
+      type: i === 0 ? "input" : i === addedIntegrations.length - 1 ? "output" : undefined,
+      data: { label: w.name },
+      position: { x: i * 200, y: 0 },
+    }))
+    const edges = addedIntegrations.slice(1).map((w, i) => ({
+      id: `e${addedIntegrations[i].id}-${w.id}`,
+      source: addedIntegrations[i].id,
+      target: w.id,
+      animated: true,
+    }))
+    return { nodes, edges }
+  }
+
+  // Prepare JSON for OpenAI
+  const getIntegrationsJson = () => addedIntegrations.map(({ id, name, description, integrations }) => ({ id, name, description, integrations }))
 
   useEffect(() => {
     if (isLoading) {
@@ -149,85 +180,96 @@ export function GenerationPanel({ messages, isLoading, selectedWorkflow, onWorkf
           </Card>
         )}
 
+        {/* Workflow Visualization */}
+        <div className="mt-4">
+          <h3 className="text-lg font-semibold text-white mb-2 pl-1">Workflow Visualization</h3>
+          <div className="h-[400px] rounded-2xl border border-gray-700 bg-gradient-to-br from-gray-900 via-gray-950 to-gray-900 shadow-xl overflow-hidden">
+            <ReactFlow nodes={getReactFlowElements().nodes} edges={getReactFlowElements().edges} fitView>
+              <Background />
+              <Controls />
+            </ReactFlow>
+          </div>
+        </div>
+
         {/* Generated Workflows */}
-        {workflows.map((workflow) => {
-          const IconComponent = workflow.icon
-          return (
-            <Card
-              key={workflow.id}
-              className={`cursor-pointer transition-all duration-300 hover:scale-[1.02] bg-gray-800/30 backdrop-blur-sm border-gray-700/50 hover:border-gray-600/50 hover:shadow-2xl ${
-                selectedWorkflow === workflow.id ? "ring-2 ring-blue-500/50 border-blue-500/50" : ""
-              }`}
-              onClick={() => onWorkflowSelect(workflow.id)}
-            >
-              <CardHeader className="pb-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className={`w-12 h-12 rounded-xl bg-gradient-to-r ${workflow.color} flex items-center justify-center shadow-lg`}
-                    >
-                      <IconComponent className="w-6 h-6 text-white" />
+        <div className="mt-8 space-y-8">
+          <h3 className="text-lg font-semibold text-white mb-4 pl-1">Available Integrations</h3>
+          {workflows.map((workflow) => {
+            const IconComponent = workflow.icon
+            return (
+              <Card
+                key={workflow.id}
+                className={`cursor-pointer transition-all duration-300 hover:scale-[1.02] bg-gray-800/40 backdrop-blur border border-gray-700/60 hover:border-blue-500/40 hover:shadow-2xl ${
+                  selectedWorkflow === workflow.id ? "ring-2 ring-blue-500/50 border-blue-500/50" : ""
+                }`}
+                onClick={() => onWorkflowSelect(workflow.id)}
+              >
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div
+                        className={`w-12 h-12 rounded-xl bg-gradient-to-r ${workflow.color} flex items-center justify-center shadow-lg`}
+                      >
+                        <IconComponent className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-white text-lg">{workflow.name}</CardTitle>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <Badge variant="secondary" className="bg-green-500/20 text-green-400 border-green-500/30">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            {workflow.status}
+                          </Badge>
+                          <Badge variant="outline" className="text-gray-400 border-gray-600">
+                            {workflow.complexity}
+                          </Badge>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-white text-lg">{workflow.name}</CardTitle>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <Badge variant="secondary" className="bg-green-500/20 text-green-400 border-green-500/30">
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                          {workflow.status}
-                        </Badge>
-                        <Badge variant="outline" className="text-gray-400 border-gray-600">
-                          {workflow.complexity}
-                        </Badge>
+                    <div className="text-right">
+                      <div className="flex items-center text-gray-400 text-sm">
+                        <Clock className="w-4 h-4 mr-1" />
+                        {workflow.estimatedTime}
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="flex items-center text-gray-400 text-sm">
-                      <Clock className="w-4 h-4 mr-1" />
-                      {workflow.estimatedTime}
-                    </div>
+                </CardHeader>
+
+                <CardContent className="pt-0">
+                  <p className="text-gray-300 mb-4 leading-relaxed">{workflow.description}</p>
+
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {workflow.integrations.map((integration: string) => (
+                      <Badge
+                        key={integration}
+                        variant="outline"
+                        className="bg-gray-700/50 text-gray-300 border-gray-600 hover:bg-gray-600/50 transition-colors"
+                      >
+                        {integration === "Slack" && <MessageSquare className="w-3 h-3 mr-1" />}
+                        {integration === "Email" && <Mail className="w-3 h-3 mr-1" />}
+                        {integration === "WhatsApp" && <MessageSquare className="w-3 h-3 mr-1" />}
+                        <span>{integration}</span>
+                      </Badge>
+                    ))}
                   </div>
-                </div>
-              </CardHeader>
 
-              <CardContent className="pt-0">
-                <p className="text-gray-300 mb-4 leading-relaxed">{workflow.description}</p>
-
-                <div className="flex flex-wrap gap-2 mb-6">
-                  {workflow.integrations.map((integration: string) => (
-                    <Badge
-                      key={integration}
+                  <div className="flex space-x-3">
+                    <Button className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium transition-all duration-200">
+                      <Play className="w-4 h-4 mr-2" />
+                      Deploy Workflow
+                    </Button>
+                    <Button
                       variant="outline"
-                      className="bg-gray-700/50 text-gray-300 border-gray-600 hover:bg-gray-600/50 transition-colors"
+                      className="border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 bg-transparent"
                     >
-                      {integration === "Slack" && <MessageSquare className="w-3 h-3 mr-1" />}
-                      {integration === "Email" && <Mail className="w-3 h-3 mr-1" />}
-                      {integration === "WhatsApp" && <MessageSquare className="w-3 h-3 mr-1" />}
-                      <span>{integration}</span>
-                    </Badge>
-                  ))}
-                </div>
-
-                <div className="flex space-x-3">
-                  <Button className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium transition-all duration-200">
-                    <Play className="w-4 h-4 mr-2" />
-                    Deploy Workflow
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 bg-transparent"
-                  >
-                    <Settings className="w-4 h-4 mr-2" />
-                    Customize
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
-
-        {/* Workflow Visualization */}
-        {selectedWorkflow && <WorkflowVisualization workflowId={selectedWorkflow} />}
+                      <Settings className="w-4 h-4 mr-2" />
+                      Customize
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
       </div>
     </div>
   )

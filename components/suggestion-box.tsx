@@ -77,7 +77,7 @@ export function SuggestionBox({ onSuggestionClick }: SuggestionBoxProps) {
                 </div>
               </div>
             </Button>
-          )
+          ) 
         })}
       </div> */}
     </div>
